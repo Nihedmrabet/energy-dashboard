@@ -1,14 +1,18 @@
+// components/kpi-card.tsx
+"use client"
+
 import type React from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { TrendingUp, TrendingDown, AlertCircle } from "lucide-react"
 
-interface KPICardProps {
+// EXPORTEZ l'interface
+export interface KPICardProps {
   title: string
   value: string
   unit: string
   icon: React.ReactNode
   trend: string
-  status: "normal" | "warning" | "critical";
+  status: "normal" | "warning" | "critical"
   color: string
 }
 
@@ -30,7 +34,8 @@ export function KPICard({ title, value, unit, icon, trend, status, color }: KPIC
       <CardContent className="pt-6">
         <div className="flex items-start justify-between mb-4">
           <div
-            className={`w-10 h-10 rounded-lg bg-linear-to-br ${color} flex items-center justify-center text-white`}
+            // Corrigé: bg-gradient-to-br au lieu de bg-linear-to-br
+            className={`w-10 h-10 rounded-lg bg-gradient-to-br ${color} flex items-center justify-center text-white`}
           >
             {icon}
           </div>
@@ -46,8 +51,6 @@ export function KPICard({ title, value, unit, icon, trend, status, color }: KPIC
 
         <div className="flex items-center gap-1">
           {trendIcon}
-
-          {/* ICI : className fusionné */}
           <span
             className={`text-sm ${
               trend.startsWith("+") ? "text-emerald-400" : "text-red-400"
