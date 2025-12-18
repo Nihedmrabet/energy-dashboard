@@ -1,4 +1,3 @@
-// app/dashboard/page.tsx - VERSION CORRIGÉE POUR LE NOUVEAU SERVICE
 "use client"
 
 import { useState, useEffect } from "react"
@@ -15,13 +14,13 @@ import { AlertsPanelDynamic } from "./alerts-panel-dynamic"
 import { ParametersTable } from "./parameters-table-dynamic"
 import { PredictionChart } from "./prediction-chart"
 import { EnergyFlow } from "./energy-flow"
-import { AlertTriangle, Sun, Moon, Wind, Zap, TrendingUp, RefreshCw, Cloud, Sunset, Sunrise } from "lucide-react"
+import { AlertTriangle, Sun, Moon, Wind, Zap, TrendingUp, RefreshCw } from "lucide-react"
 import { Chatbot } from "./chatbot"
 
-// Type pour le statut des KPIs
+// Type for KPI status
 type KPIStatus = "normal" | "warning" | "critical"
 
-// Interface étendue pour inclure les données météo
+// Extended interface to include weather data
 interface ExtendedMetrics extends EnergyMetrics {
   isDaytime?: boolean
   sunrise?: string
@@ -44,44 +43,44 @@ export function Dashboard() {
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
   const [isDaytime, setIsDaytime] = useState(true)
 
-  // Récupérer les données météo
+  // Fetch weather data
   const fetchWeatherData = async () => {
     try {
       setLoading(true)
-      console.log("🌤️ Chargement des données météo...")
+      console.log("🌤️ Loading weather data...")
       
       const newMetrics = await weatherbitService.getEnergyMetrics()
       
-      // Déterminer si c'est le jour en fonction de l'heure
+      // Determine if it's daytime based on current hour
       const now = new Date()
       const currentHour = now.getHours()
       const isDay = currentHour >= 7 && currentHour < 18
       setIsDaytime(isDay)
       
-      // Mettre à jour les métriques avec des données étendues
+      // Update metrics with extended data
       const extendedMetrics: ExtendedMetrics = {
         ...newMetrics,
         isDaytime: isDay,
-        windSpeed: 5.1, // Valeur moyenne, à remplacer par données réelles
-        cloudCover: 45  // Valeur moyenne
+        windSpeed: 5.1, // Average value, replace with real data
+        cloudCover: 45  // Average value
       }
       
       setMetrics(extendedMetrics)
       setLastUpdated(newMetrics.lastUpdated || new Date())
       
-      console.log("✅ Données météo chargées:", extendedMetrics)
-      console.log(`🌅 ${isDay ? 'Jour ☀️' : 'Nuit 🌙'} - Heure: ${currentHour}:00`)
+      console.log("✅ Weather data loaded:", extendedMetrics)
+      console.log(`🌅 ${isDay ? 'Day ☀️' : 'Night 🌙'} - Time: ${currentHour}:00`)
       
     } catch (error) {
-      console.error("❌ Erreur lors du chargement des données:", error)
+      console.error("❌ Error loading data:", error)
       
-      // Déterminer si c'est le jour pour les données par défaut
+      // Determine if it's daytime for default data
       const now = new Date()
       const currentHour = now.getHours()
       const isDay = currentHour >= 7 && currentHour < 18
       setIsDaytime(isDay)
       
-      // Utiliser des données par défaut réalistes selon l'heure
+      // Use realistic default data based on time
       const defaultMetrics: ExtendedMetrics = {
         solarPower: isDay ? 3.8 : 0.1,
         windPower: isDay ? 2.5 : 3.2,
@@ -100,24 +99,24 @@ export function Dashboard() {
     }
   }
 
-  // Charger les données au démarrage
+  // Load data on startup
   useEffect(() => {
     fetchWeatherData()
     
-    // Rafraîchir toutes les 5 minutes
+    // Refresh every 5 minutes
     const interval = setInterval(fetchWeatherData, 5 * 60 * 1000)
     
     return () => clearInterval(interval)
   }, [])
 
-  // Ajouter/classe dark au <html>
+  // Add/remove dark class to <html>
   useEffect(() => {
     const root = document.documentElement
     if (isDark) root.classList.add("dark")
     else root.classList.remove("dark")
   }, [isDark])
 
-  // Fonction helper pour vérifier le statut avec typage correct
+  // Helper function to check status with correct typing
   const getWindPowerStatus = (): KPIStatus => {
     return metrics.windPower < 1.5 ? "warning" : "normal"
   }
@@ -128,20 +127,20 @@ export function Dashboard() {
   }
 
   const getSolarPowerStatus = (): KPIStatus => {
-    if (!isDaytime) return "normal" // Nuit = normal (pas de production)
+    if (!isDaytime) return "normal" // Night = normal (no production)
     return metrics.solarPower < 1.0 ? "warning" : "normal"
   }
 
-  // Données pour l'alerte
+  // Alert data
   const getAlertMessage = (): string => {
     if (metrics.windPower < 1.5) {
-      return "Production éolienne faible. Vitesse du vent insuffisante."
+      return "Low wind production. Insufficient wind speed."
     }
     if (!isDaytime && metrics.solarPower > 0.5) {
-      return "Production solaire nocturne détectée. Vérifiez les capteurs."
+      return "Nighttime solar production detected. Check sensors."
     }
     if (metrics.systemEfficiency < 60) {
-      return "Efficacité système critique. Maintenance requise."
+      return "Critical system efficiency. Maintenance required."
     }
     return "Wind turbine temperature exceeds threshold (85°C). Automatic shutdown initiated."
   }
@@ -153,9 +152,9 @@ export function Dashboard() {
     return "warning"
   }
 
-  // Calculer les tendances réalistes
+  // Calculate realistic trends
   const getSolarTrend = () => {
-    if (!isDaytime) return "↗0%" // Pas de tendance la nuit
+    if (!isDaytime) return "↗0%" // No trend at night
     return metrics.solarPower > 3 ? "↗+12%" : metrics.solarPower > 1 ? "↗+5%" : "↘-8%"
   }
 
@@ -173,7 +172,7 @@ export function Dashboard() {
     return efficiency > 85 ? "↗+5%" : efficiency > 70 ? "→0%" : "↘-12%"
   }
 
-  // Définir les KPI avec données dynamiques et typage correct
+  // Define KPIs with dynamic data and correct typing
   const kpiData = [
     {
       title: "Solar Power",
@@ -184,7 +183,7 @@ export function Dashboard() {
       status: getSolarPowerStatus(),
       color: isDaytime ? "from-yellow-400 to-orange-500" : "from-blue-400 to-indigo-500",
       loading,
-      subtitle: isDaytime ? "Production diurne" : "Nuit - Pas de production"
+      subtitle: isDaytime ? "Daytime production" : "Night - No production"
     },
     {
       title: "Wind Power",
@@ -195,7 +194,7 @@ export function Dashboard() {
       status: getWindPowerStatus(),
       color: "from-cyan-400 to-blue-500",
       loading,
-      subtitle: `Vent: ${metrics.windSpeed?.toFixed(1) || '0.0'} m/s`
+      subtitle: `Wind: ${metrics.windSpeed?.toFixed(1) || '0.0'} m/s`
     },
     {
       title: "Grid Injection",
@@ -206,7 +205,7 @@ export function Dashboard() {
       status: metrics.gridInjection < 0.5 ? "warning" : "normal" as KPIStatus,
       color: "from-emerald-400 to-teal-500",
       loading,
-      subtitle: metrics.gridInjection > 0 ? "Export vers réseau" : "Import depuis réseau"
+      subtitle: metrics.gridInjection > 0 ? "Export to grid" : "Import from grid"
     },
     {
       title: "System Efficiency",
@@ -217,27 +216,27 @@ export function Dashboard() {
       status: getEfficiencyStatus(),
       color: "from-purple-400 to-pink-500",
       loading,
-      subtitle: `Conditions: ${isDaytime ? 'Diurnes' : 'Nocturnes'}`
+      subtitle: `Conditions: ${isDaytime ? 'Daytime' : 'Nighttime'}`
     }
   ]
 
-  // Obtenir l'heure actuelle formatée
+  // Get formatted current time
   const getCurrentTime = () => {
-    return new Date().toLocaleTimeString('fr-FR', {
+    return new Date().toLocaleTimeString('en-US', {
       hour: '2-digit',
       minute: '2-digit'
     })
   }
 
-  // Obtenir l'indicateur jour/nuit
+  // Get day/night indicator
   const getDayNightIndicator = () => {
     const now = new Date()
     const hour = now.getHours()
     
-    if (hour >= 5 && hour < 12) return { icon: '🌅', text: 'Matin' }
-    if (hour >= 12 && hour < 17) return { icon: '☀️', text: 'Après-midi' }
-    if (hour >= 17 && hour < 21) return { icon: '🌆', text: 'Soirée' }
-    return { icon: '🌙', text: 'Nuit' }
+    if (hour >= 5 && hour < 12) return { icon: '🌅', text: 'Morning' }
+    if (hour >= 12 && hour < 17) return { icon: '☀️', text: 'Afternoon' }
+    if (hour >= 17 && hour < 21) return { icon: '🌆', text: 'Evening' }
+    return { icon: '🌙', text: 'Night' }
   }
 
   const dayNight = getDayNightIndicator()
@@ -264,69 +263,67 @@ export function Dashboard() {
       >
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex items-center justify-between">
-           <div className="flex items-center gap-3">
-  <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-emerald-400 to-cyan-500 flex items-center justify-center relative overflow-hidden group">
-    {/* Effet de pulsation */}
-    <div className="absolute inset-0 bg-gradient-to-br from-emerald-300/30 to-cyan-400/20 animate-pulse group-hover:animate-none" />
-    
-    {/* Double icône pour effet de profondeur */}
-    <div className="relative">
-      {/* Ombre */}
-      <svg 
-        className="w-6 h-6 text-white/30 absolute -top-0.5 -left-0.5"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-      >
-        <path d="M13 2L3 14H12L11 22L21 10H12L13 2Z" />
-      </svg>
-      {/* Icône principale */}
-      <svg 
-        className="w-6 h-6 text-white relative z-10 group-hover:scale-110 transition-transform duration-300"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      >
-        <path d="M13 2L3 14H12L11 22L21 10H12L13 2Z" />
-      </svg>
-    </div>
-    
-    {/* Points lumineux */}
-    <div className="absolute top-1 left-1 w-1 h-1 bg-white/60 rounded-full blur-sm group-hover:scale-150 transition-transform" />
-    <div className="absolute bottom-1 right-1 w-1 h-1 bg-white/40 rounded-full blur-sm group-hover:scale-150 transition-transform" />
-  </div>
-  <div>
-    <h1 className="text-2xl font-bold">Smart Energy Monitor</h1>
-    <div className="flex items-center gap-2 text-sm opacity-70">
-      <span>Solar & Wind Systems</span>
-      <span className="opacity-50">•</span>
-      <span className="flex items-center gap-1">
-        {dayNight.icon} {dayNight.text} ({getCurrentTime()})
-      </span>
-      
-      
-    </div>
-  </div>
-</div>
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-emerald-400 to-cyan-500 flex items-center justify-center relative overflow-hidden group">
+                {/* Pulsing effect */}
+                <div className="absolute inset-0 bg-gradient-to-br from-emerald-300/30 to-cyan-400/20 animate-pulse group-hover:animate-none" />
+                
+                {/* Double icon for depth effect */}
+                <div className="relative">
+                  {/* Shadow */}
+                  <svg 
+                    className="w-6 h-6 text-white/30 absolute -top-0.5 -left-0.5"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                  >
+                    <path d="M13 2L3 14H12L11 22L21 10H12L13 2Z" />
+                  </svg>
+                  {/* Main icon */}
+                  <svg 
+                    className="w-6 h-6 text-white relative z-10 group-hover:scale-110 transition-transform duration-300"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M13 2L3 14H12L11 22L21 10H12L13 2Z" />
+                  </svg>
+                </div>
+                
+                {/* Light dots */}
+                <div className="absolute top-1 left-1 w-1 h-1 bg-white/60 rounded-full blur-sm group-hover:scale-150 transition-transform" />
+                <div className="absolute bottom-1 right-1 w-1 h-1 bg-white/40 rounded-full blur-sm group-hover:scale-150 transition-transform" />
+              </div>
+              <div>
+                <h1 className="text-2xl font-bold">Smart Energy Monitor</h1>
+                <div className="flex items-center gap-2 text-sm opacity-70">
+                  <span>Solar & Wind Systems</span>
+                  <span className="opacity-50">•</span>
+                  <span className="flex items-center gap-1">
+                    {dayNight.icon} {dayNight.text} ({getCurrentTime()})
+                  </span>
+                </div>
+              </div>
+            </div>
 
             <div className="flex items-center gap-3">
               <Badge variant="outline" className={`${loading ? 'bg-yellow-500/10 text-yellow-400 border-yellow-500/30' : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'}`}>
-                {loading ? 'Chargement...' : 'Live'}
+                {loading ? 'Loading...' : 'Live'}
               </Badge>
               
-              {/* Indicateur de mise à jour */}
+              {/* Update indicator */}
               <div className="flex items-center gap-2">
                 <div className={`w-2 h-2 rounded-full ${loading ? 'bg-yellow-500 animate-pulse' : 'bg-emerald-500'}`} />
                 <span className="text-sm opacity-70">
-                  {lastUpdated ? `Màj: ${lastUpdated.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}` : 'Chargement...'}
+                  {lastUpdated ? `Updated: ${lastUpdated.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}` : 'Loading...'}
                 </span>
               </div>
 
-              {/* Bouton de rafraîchissement */}
+              {/* Refresh button */}
               <Button
                 variant="outline"
                 onClick={fetchWeatherData}
@@ -335,10 +332,10 @@ export function Dashboard() {
                 size="sm"
               >
                 <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-                Rafraîchir
+                Refresh
               </Button>
 
-              {/* Bouton Light/Dark */}
+              {/* Light/Dark toggle */}
               <Button
                 variant="outline"
                 onClick={() => setIsDark(!isDark)}
@@ -380,7 +377,7 @@ export function Dashboard() {
           </Alert>
         </motion.div>
 
-        {/* KPI Cards Dynamiques */}
+        {/* Dynamic KPI Cards */}
         <motion.div
           whileHover={{ scale: 1.03 }}
           whileTap={{ scale: 0.98 }}
@@ -408,7 +405,7 @@ export function Dashboard() {
           ))}
         </motion.div>
 
-        {/* Section météo actuelle */}
+        {/* Current weather section */}
         <motion.div
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
@@ -418,7 +415,7 @@ export function Dashboard() {
           
         </motion.div>
 
-        {/* Reste du code inchangé */}
+        {/* Time range buttons */}
         <motion.div
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
