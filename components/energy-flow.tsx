@@ -5,7 +5,8 @@ import { useEffect, useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { energyDataService, EnergyFlowData } from "@/lib/energy-data-service"
 import { RefreshCw, Battery, Sun, Wind, Zap, TrendingUp, Activity } from "lucide-react"
-
+import { weatherbitService } from '@/lib/weatherbit-service'
+// PAS d'autre import weatherbit !
 export function EnergyFlow() {
   const [flowData, setFlowData] = useState<EnergyFlowData | null>(null)
   const [totals, setTotals] = useState<{ today: number; thisMonth: number } | null>(null)

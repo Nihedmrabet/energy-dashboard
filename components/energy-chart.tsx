@@ -6,6 +6,8 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Responsi
 import { energyDataService, EnergyDataPoint } from "@/lib/energy-data-service"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { RefreshCw } from "lucide-react"
+import { weatherbitService } from '@/lib/weatherbit-service'
+// PAS d'autre import weatherbit !
 
 interface EnergyChartProps {
   timeRange: string

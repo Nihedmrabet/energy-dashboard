@@ -16,6 +16,7 @@ import { PredictionChart } from "./prediction-chart"
 import { EnergyFlow } from "./energy-flow"
 import { AlertTriangle, Sun, Moon, Wind, Zap, TrendingUp, RefreshCw } from "lucide-react"
 import { Chatbot } from "./chatbot"
+import { createClient } from '@/lib/supabase-client'
 
 // Type for KPI status
 type KPIStatus = "normal" | "warning" | "critical"
@@ -42,72 +43,319 @@ export function Dashboard() {
   const [loading, setLoading] = useState(true)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
   const [isDaytime, setIsDaytime] = useState(true)
+  const [activeAlerts, setActiveAlerts] = useState<any[]>([])
+  const [lastCriticalAlert, setLastCriticalAlert] = useState<any>(null)
+
+  // ⭐⭐ CRÉER LE CLIENT SUPABASE ⭐⭐
+  const supabase = createClient()
 
   // Fetch weather data
-  const fetchWeatherData = async () => {
-    try {
-      setLoading(true)
-      console.log("🌤️ Loading weather data...")
-      
-      const newMetrics = await weatherbitService.getEnergyMetrics()
-      
-      // Determine if it's daytime based on current hour
-      const now = new Date()
-      const currentHour = now.getHours()
-      const isDay = currentHour >= 7 && currentHour < 18
-      setIsDaytime(isDay)
-      
-      // Update metrics with extended data
-      const extendedMetrics: ExtendedMetrics = {
-        ...newMetrics,
-        isDaytime: isDay,
-        windSpeed: 5.1, // Average value, replace with real data
-        cloudCover: 45  // Average value
-      }
-      
-      setMetrics(extendedMetrics)
-      setLastUpdated(newMetrics.lastUpdated || new Date())
-      
-      console.log("✅ Weather data loaded:", extendedMetrics)
-      console.log(`🌅 ${isDay ? 'Day ☀️' : 'Night 🌙'} - Time: ${currentHour}:00`)
-      
-    } catch (error) {
-      console.error("❌ Error loading data:", error)
-      
-      // Determine if it's daytime for default data
-      const now = new Date()
-      const currentHour = now.getHours()
-      const isDay = currentHour >= 7 && currentHour < 18
-      setIsDaytime(isDay)
-      
-      // Use realistic default data based on time
-      const defaultMetrics: ExtendedMetrics = {
-        solarPower: isDay ? 3.8 : 0.1,
-        windPower: isDay ? 2.5 : 3.2,
-        gridInjection: isDay ? 1.5 : 0.2,
-        systemEfficiency: isDay ? 82.5 : 65.0,
-        lastUpdated: new Date(),
-        isDaytime: isDay,
-        windSpeed: isDay ? 4.2 : 5.1,
-        cloudCover: isDay ? 35 : 70
-      }
-      
-      setMetrics(defaultMetrics)
-      setLastUpdated(new Date())
-    } finally {
-      setLoading(false)
-    }
-  }
 
+
+const fetchWeatherData = async () => {
+  try {
+    setLoading(true)
+    
+    // SIMPLE : Appeler le service qui gère tout
+    const metrics = await weatherbitService.getEnergyMetrics()
+    
+    // Vos logs pour voir ce qui se passe
+    console.log("✅ Données reçues du service:", {
+      solaire: `${metrics.solarPower} kW`,
+      éolien: `${metrics.windPower} kW`,
+      injection: `${metrics.gridInjection} kW`,
+      heure: metrics.lastUpdated.toLocaleTimeString()
+    })
+    
+    // Mettre à jour l'état
+    setMetrics({
+      ...metrics,
+      // Ajouter les champs ExtendedMetrics si besoin
+      isDaytime: metrics.solarPower > 1, // Simple détection jour/nuit
+      windSpeed: metrics.windPower / 0.8, // Estimation
+      cloudCover: 35 // Valeur par défaut
+    })
+    
+    setLastUpdated(metrics.lastUpdated)
+    setIsDaytime(metrics.solarPower > 1)
+    
+    // Le reste de votre code reste IDENTIQUE
+    await syncAlertsWithSupabase(metrics, metrics.solarPower > 1)
+    await fetchActiveAlerts()
+    
+  } catch (error) {
+    console.error("❌ Erreur globale:", error)
+  } finally {
+    setLoading(false)
+  }
+}
+// APRÈS la fonction fetchWeatherData, AVANT le useEffect
+
+const cleanInvalidAlerts = async () => {
+  try {
+    console.log('🧹 Nettoyage COMPLET des alertes...')
+    
+    // ÉTAPE 1: Supprimer TOUS les "System Operational" (doublons)
+    const { data: systemOps } = await supabase
+      .from('system_alerts')
+      .select('id, timestamp')
+      .eq('title', 'System Operational')
+      .order('timestamp', { ascending: false })
+    
+    if (systemOps && systemOps.length > 0) {
+      console.log(`🗑️ ${systemOps.length} alertes "System Operational" trouvées`)
+      
+      // Garder seulement la PLUS RÉCENTE
+      const alertsToDelete = systemOps.slice(1).map(a => a.id)
+      
+      if (alertsToDelete.length > 0) {
+        await supabase
+          .from('system_alerts')
+          .delete()
+          .in('id', alertsToDelete)
+        
+        console.log(`✅ ${alertsToDelete.length} doublons "System Operational" supprimés`)
+      }
+    }
+    
+    // ÉTAPE 2: Nettoyer les 0.0
+    const { error } = await supabase
+      .from('system_alerts')
+      .update({ resolved: true })
+      .eq('resolved', false)
+      .or('description.ilike.%0.0 kW%,description.ilike.%0.0%%,description.ilike.%0.0 %')
+    
+    if (error) {
+      console.error('❌ Erreur nettoyage 0.0:', error.message)
+    } else {
+      console.log('✅ Alertes 0.0 marquées comme résolues')
+    }
+    
+    // ÉTAPE 3: NE RIEN CRÉER DE PLUS - on garde les 3 alertes de démo
+    console.log('✅ Nettoyage terminé - garde les 3 alertes de démo')
+    
+  } catch (error) {
+    console.error('❌ Erreur globale:', error)
+  }
+}
+
+// Méthode alternative
+const cleanInvalidAlertsAlternative = async () => {
+  try {
+    console.log('🔄 Méthode alternative de nettoyage...')
+    
+    // 1. Récupérer toutes les alertes non résolues
+    const { data: alerts } = await supabase
+      .from('system_alerts')
+      .select('id, description')
+      .eq('resolved', false)
+    
+    if (!alerts || alerts.length === 0) {
+      console.log('✅ Aucune alerte à nettoyer')
+      return
+    }
+    
+    // 2. Filtrer celles avec 0.0
+    const alertsWithZero = alerts.filter(alert => 
+      alert.description?.includes('0.0 kW') ||
+      alert.description?.includes('0.0%') ||
+      alert.description?.includes('0.0 ')
+    )
+    
+    console.log(`📊 ${alertsWithZero.length} alertes 0.0 à nettoyer`)
+    
+    // 3. Les marquer comme résolues une par une
+    for (const alert of alertsWithZero) {
+      await supabase
+        .from('system_alerts')
+        .update({ resolved: true })
+        .eq('id', alert.id)
+    }
+    
+    console.log(`✅ ${alertsWithZero.length} alertes nettoyées`)
+    
+  } catch (error) {
+    console.error('❌ Erreur alternative:', error)
+  }
+}
+  // Synchronize alerts with Supabase
+const syncAlertsWithSupabase = async (metrics: ExtendedMetrics, isDaytime: boolean) => {
+  try {
+    console.log('🔄 Synchronisation alertes avec métriques:', metrics)
+    
+    // Ne PAS créer d'alertes si c'est la nuit (solaire = 0 normal)
+    if (!isDaytime && metrics.solarPower === 0) {
+      console.log('🌙 Nuit - Pas d\'alerte solaire (normal)')
+      // Continuer pour les autres alertes
+    }
+    
+    // Ne PAS créer d'alerte éolienne si vent < 2.5 m/s (normal)
+    if (metrics.windPower === 0) {
+      console.log('💨 Vent faible - Pas d\'alerte éolienne (vent < 2.5 m/s)')
+    }
+    
+    // Récupérer les alertes récentes
+    const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString()
+    
+    const { data: recentAlerts } = await supabase
+      .from('system_alerts')
+      .select('title, description, timestamp')
+      .gte('timestamp', twoHoursAgo)
+      .eq('resolved', false)
+    
+    const recentAlertKeys = recentAlerts?.map(a => `${a.title}`) || []
+    
+    const alertsToCreate = []
+    
+    // SOLAR (seulement si c'est le jour ET puissance faible)
+    if (isDaytime && metrics.solarPower < 1.0 && metrics.solarPower > 0) {
+      const title = 'Low Solar Production'
+      if (!recentAlertKeys.includes(title)) {
+        alertsToCreate.push({
+          title,
+          description: `Solar power is low: ${metrics.solarPower.toFixed(1)} kW (threshold: 1.0 kW)`,
+          severity: 'warning'
+        })
+      }
+    }
+    
+    // WIND (seulement si puissance > 0 mais < seuil)
+    if (metrics.windPower > 0 && metrics.windPower < 1.5) {
+      const title = 'Low Wind Production'
+      if (!recentAlertKeys.includes(title)) {
+        alertsToCreate.push({
+          title,
+          description: `Wind power insufficient: ${metrics.windPower.toFixed(1)} kW (threshold: 1.5 kW)`,
+          severity: 'warning'
+        })
+      }
+    }
+    
+    // EFFICIENCY (seulement si > 0)
+    if (metrics.systemEfficiency > 0 && metrics.systemEfficiency < 75) {
+      const severity = metrics.systemEfficiency < 60 ? 'critical' : 'warning'
+      const title = severity === 'critical' ? 'Critical System Efficiency' : 'Low System Efficiency'
+      
+      if (!recentAlertKeys.includes(title)) {
+        alertsToCreate.push({
+          title,
+          description: `System efficiency: ${metrics.systemEfficiency.toFixed(1)}% (threshold: ${severity === 'critical' ? '60%' : '75%'})`,
+          severity
+        })
+      }
+    }
+    
+    console.log(`📝 Alertes à créer: ${alertsToCreate.length}`)
+    
+    // Créer les alertes
+    for (const alert of alertsToCreate) {
+      const alertData: any = {
+        title: alert.title,
+        description: alert.description,
+        timestamp: new Date().toISOString(),
+        resolved: false
+      }
+      
+      if (alert.severity) {
+        alertData.severity = alert.severity
+      }
+      
+      const { error } = await supabase
+        .from('system_alerts')
+        .insert(alertData)
+      
+      if (!error) {
+        console.log(`✅ Alerte créée: ${alert.title}`)
+      }
+    }
+    
+  } catch (error) {
+    console.error('❌ Sync error:', error)
+  }
+}
+
+  // Create alert only if it doesn't already exist
+const createAlertIfNotExists = async (alert: any) => {
+  try {
+    // Vérifier si une alerte similaire existe déjà
+    const { data: existingAlerts, error: checkError } = await supabase
+      .from('system_alerts')
+      .select('id')
+      .eq('source', alert.source)
+      .eq('resolved', false)
+      .limit(1)
+    
+    if (checkError) {
+      console.error('❌ Error checking existing alerts:', checkError)
+      return
+    }
+    
+    if (!existingAlerts || existingAlerts.length === 0) {
+      const { error: insertError } = await supabase
+        .from('system_alerts')
+        .insert({
+          ...alert,
+          resolved: false,
+          timestamp: new Date().toISOString()  // ← CHANGÉ ICI
+        })
+      
+      if (insertError) {
+        console.error('❌ Supabase insert error:', insertError)
+        return
+      }
+      console.log(`✅ New alert created: ${alert.title}`)
+    }
+  } catch (error) {
+    console.error('❌ Error creating alert:', error)
+  }
+}
+
+const fetchActiveAlerts = async () => {
+  try {
+    const { data, error } = await supabase
+      .from('system_alerts')
+      .select('*')
+      .eq('resolved', false)
+      .order('timestamp', { ascending: false })  // ← CHANGÉ ICI
+      .limit(10)
+    
+    if (error) {
+      console.error('❌ Supabase fetch error:', error)
+      return
+    }
+    
+    setActiveAlerts(data || [])
+    
+    const criticalAlert = data?.find(a => a.severity === 'critical') || data?.[0]
+    setLastCriticalAlert(criticalAlert || null)
+    
+    console.log(`📊 ${data?.length || 0} active alerts retrieved`)
+    
+  } catch (error) {
+    console.error('❌ Error fetching alerts:', error)
+  }
+}
   // Load data on startup
-  useEffect(() => {
-    fetchWeatherData()
-    
-    // Refresh every 5 minutes
-    const interval = setInterval(fetchWeatherData, 5 * 60 * 1000)
-    
-    return () => clearInterval(interval)
-  }, [])
+// REMPLACEZ le useEffect actuel par :
+
+useEffect(() => {
+  console.log('🚀 Initialisation du dashboard...')
+  
+  // 1. Nettoyer les vieilles alertes invalides (une seule fois)
+  cleanInvalidAlerts()
+  
+  // 2. Charger les données initiales
+  fetchWeatherData()
+  
+  // 3. Configurer le rafraîchissement périodique (toutes les 5 minutes)
+  const refreshInterval = setInterval(fetchWeatherData, 5 * 60 * 1000)
+  
+  // 4. Nettoyage quand le composant est détruit
+  return () => {
+    console.log('🧹 Nettoyage des intervalles...')
+    clearInterval(refreshInterval)
+  }
+}, []) // ← IMPORTANT: tableau vide = exécuté une seule fois au montage
 
   // Add/remove dark class to <html>
   useEffect(() => {
@@ -118,38 +366,65 @@ export function Dashboard() {
 
   // Helper function to check status with correct typing
   const getWindPowerStatus = (): KPIStatus => {
-    return metrics.windPower < 1.5 ? "warning" : "normal"
+    // Check if there's a wind turbine alert in Supabase
+    const hasWindAlert = activeAlerts.some(alert => 
+      alert.source === 'wind_turbine' && !alert.resolved
+    )
+    return hasWindAlert ? "warning" : "normal"
   }
 
   const getEfficiencyStatus = (): KPIStatus => {
-    return metrics.systemEfficiency < 75 ? "warning" : 
-           metrics.systemEfficiency < 60 ? "critical" : "normal"
+    // Check if there's an efficiency alert in Supabase
+    const efficiencyAlert = activeAlerts.find(alert => 
+      alert.source === 'system_controller'
+    )
+    
+    if (!efficiencyAlert) return "normal"
+    return efficiencyAlert.severity === 'critical' ? "critical" : "warning"
   }
 
   const getSolarPowerStatus = (): KPIStatus => {
     if (!isDaytime) return "normal" // Night = normal (no production)
-    return metrics.solarPower < 1.0 ? "warning" : "normal"
+    
+    // Check if there's a solar alert in Supabase
+    const hasSolarAlert = activeAlerts.some(alert => 
+      alert.source === 'solar_panel' && !alert.resolved
+    )
+    return hasSolarAlert ? "warning" : "normal"
   }
 
-  // Alert data
+  const getGridInjectionStatus = (): KPIStatus => {
+    // Check if there's a grid alert in Supabase
+    const hasGridAlert = activeAlerts.some(alert => 
+      alert.source === 'grid_connection' && !alert.resolved
+    )
+    return hasGridAlert ? "warning" : "normal"
+  }
+
+  // Alert data from Supabase
   const getAlertMessage = (): string => {
-    if (metrics.windPower < 1.5) {
-      return "Low wind production. Insufficient wind speed."
+    if (lastCriticalAlert) {
+      return `${lastCriticalAlert.title}: ${lastCriticalAlert.description}`
     }
-    if (!isDaytime && metrics.solarPower > 0.5) {
-      return "Nighttime solar production detected. Check sensors."
+    
+    if (activeAlerts.length > 0) {
+      const firstAlert = activeAlerts[0]
+      return `${firstAlert.title}: ${firstAlert.description}`
     }
-    if (metrics.systemEfficiency < 60) {
-      return "Critical system efficiency. Maintenance required."
-    }
-    return "Wind turbine temperature exceeds threshold (85°C). Automatic shutdown initiated."
+    
+    return "All systems operational"
   }
 
   const getAlertType = () => {
-    if (metrics.windPower < 1.5 || metrics.systemEfficiency < 60) {
-      return "critical"
+    if (lastCriticalAlert) {
+      return 'critical'
     }
-    return "warning"
+    
+    if (activeAlerts.length > 0) {
+      return 'warning'
+    }
+    
+    return 'info'
   }
 
   // Calculate realistic trends
@@ -202,7 +477,7 @@ export function Dashboard() {
       unit: "kW",
       icon: <TrendingUp className="h-5 w-5" />,
       trend: getGridTrend(),
-      status: metrics.gridInjection < 0.5 ? "warning" : "normal" as KPIStatus,
+      status: getGridInjectionStatus(),
       color: "from-emerald-400 to-teal-500",
       loading,
       subtitle: metrics.gridInjection > 0 ? "Export to grid" : "Import from grid"
@@ -241,6 +516,11 @@ export function Dashboard() {
 
   const dayNight = getDayNightIndicator()
 
+  // Refresh alerts function
+  const refreshAlerts = async () => {
+    await fetchActiveAlerts()
+  }
+
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -265,12 +545,9 @@ export function Dashboard() {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-emerald-400 to-cyan-500 flex items-center justify-center relative overflow-hidden group">
-                {/* Pulsing effect */}
                 <div className="absolute inset-0 bg-gradient-to-br from-emerald-300/30 to-cyan-400/20 animate-pulse group-hover:animate-none" />
                 
-                {/* Double icon for depth effect */}
                 <div className="relative">
-                  {/* Shadow */}
                   <svg 
                     className="w-6 h-6 text-white/30 absolute -top-0.5 -left-0.5"
                     viewBox="0 0 24 24"
@@ -280,7 +557,6 @@ export function Dashboard() {
                   >
                     <path d="M13 2L3 14H12L11 22L21 10H12L13 2Z" />
                   </svg>
-                  {/* Main icon */}
                   <svg 
                     className="w-6 h-6 text-white relative z-10 group-hover:scale-110 transition-transform duration-300"
                     viewBox="0 0 24 24"
@@ -294,7 +570,6 @@ export function Dashboard() {
                   </svg>
                 </div>
                 
-                {/* Light dots */}
                 <div className="absolute top-1 left-1 w-1 h-1 bg-white/60 rounded-full blur-sm group-hover:scale-150 transition-transform" />
                 <div className="absolute bottom-1 right-1 w-1 h-1 bg-white/40 rounded-full blur-sm group-hover:scale-150 transition-transform" />
               </div>
@@ -314,6 +589,17 @@ export function Dashboard() {
               <Badge variant="outline" className={`${loading ? 'bg-yellow-500/10 text-yellow-400 border-yellow-500/30' : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'}`}>
                 {loading ? 'Loading...' : 'Live'}
               </Badge>
+              
+              {/* Alerts badge */}
+              {activeAlerts.length > 0 && (
+                <Badge variant="outline" className={`${
+                  lastCriticalAlert 
+                    ? 'bg-red-500/10 text-red-400 border-red-500/30' 
+                    : 'bg-yellow-500/10 text-yellow-400 border-yellow-500/30'
+                }`}>
+                  {activeAlerts.length} Alert{activeAlerts.length > 1 ? 's' : ''}
+                </Badge>
+              )}
               
               {/* Update indicator */}
               <div className="flex items-center gap-2">
@@ -360,22 +646,32 @@ export function Dashboard() {
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
 
         {/* Alerts */}
-        <motion.div
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.45, delay: 0.1 }}
-        >
-          <Alert className={`mb-6 ${
-            getAlertType() === 'critical' 
-              ? `border-red-500/50 ${isDark ? 'bg-red-500/10 text-red-400' : 'bg-red-100 text-red-700'}`
-              : `border-yellow-500/50 ${isDark ? 'bg-yellow-500/10 text-yellow-400' : 'bg-yellow-100 text-yellow-700'}`
-          }`}>
-            <AlertTriangle className="h-4 w-4" />
-            <AlertDescription>
-              {getAlertMessage()}
-            </AlertDescription>
-          </Alert>
-        </motion.div>
+        {activeAlerts.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.45, delay: 0.1 }}
+          >
+            <Alert className={`mb-6 ${
+              getAlertType() === 'critical' 
+                ? `border-red-500/50 ${isDark ? 'bg-red-500/10 text-red-400' : 'bg-red-100 text-red-700'}`
+                : `border-yellow-500/50 ${isDark ? 'bg-yellow-500/10 text-yellow-400' : 'bg-yellow-100 text-yellow-700'}`
+            }`}>
+              <AlertTriangle className="h-4 w-4" />
+              <AlertDescription className="flex justify-between items-center">
+                <span>{getAlertMessage()}</span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={refreshAlerts}
+                  className="ml-4"
+                >
+                  <RefreshCw className="w-3 h-3" />
+                </Button>
+              </AlertDescription>
+            </Alert>
+          </motion.div>
+        )}
 
         {/* Dynamic KPI Cards */}
         <motion.div
@@ -403,16 +699,6 @@ export function Dashboard() {
               <KPICardDynamic {...kpi} />
             </motion.div>
           ))}
-        </motion.div>
-
-        {/* Current weather section */}
-        <motion.div
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.45 }}
-          className="mb-6"
-        >
-          
         </motion.div>
 
         {/* Time range buttons */}
